@@ -15,6 +15,7 @@ import { DshConfigurationError, DshIsolationUnavailableError } from "./errors.js
 import { buildDshPrompt, DEFAULT_MAX_PROMPT_BYTES, WINDOWS_MAX_PROMPT_BYTES } from "./prompt.js";
 import type { DshRunDependencies, DshRunRequest } from "./runner-types.js";
 import {
+  disposableExecution,
   effectiveExtensionPlan,
   effectiveNativeTools,
   extensionSecrets,
@@ -34,6 +35,8 @@ export interface DshRunAdmission {
   readonly secrets: readonly string[];
   readonly webSearchEnabled: boolean;
   readonly workspaceWrite: boolean;
+  readonly disposableExecution: boolean;
+  readonly network: boolean;
 }
 
 export interface DshRunContext extends DshRunAdmission {
@@ -91,6 +94,7 @@ export function admitDshRun(
   if (
     dependencies.runtime?.session !== undefined ||
     request.trust === "trusted-write" ||
+    disposableExecution(request) ||
     extensionCount > 0
   ) {
     assertPinnedContainerImage(request.containerImage);
@@ -125,6 +129,8 @@ export function admitDshRun(
     secrets: [...new Set([...controllerSecrets, ...extensionSecrets(extensions)])],
     webSearchEnabled: composition.requiresWebSearchProxy(nativeTools),
     workspaceWrite: workerWorkspaceWrite(request, composition),
+    disposableExecution: disposableExecution(request),
+    network: extensions.network || disposableExecution(request),
   };
 }
 

@@ -14,6 +14,17 @@ function reader(values: Readonly<Record<string, string>>) {
 }
 
 describe("loadInputs", () => {
+  it("enables progress logs only through the explicit input", () => {
+    expect(
+      loadInputs(
+        reader({
+          "deepseek-api-key": "deepseek-key",
+          "github-token": "github-token",
+          "progress-log": "true",
+        }),
+      ).progressLog,
+    ).toBe(true);
+  });
   it("closes extension configuration types over the dshMode discriminator", () => {
     type Controlled = Extract<ActionInputs, { readonly dshMode: "controlled" }>;
     type Native = Extract<ActionInputs, { readonly dshMode: "native" }>;
@@ -35,6 +46,7 @@ describe("loadInputs", () => {
     expect(result.allowWrite).toBe(false);
     expect(result.naturalLanguageWrite).toBe(false);
     expect(result.progressComment).toBe(true);
+    expect(result.progressLog).toBe(false);
     expect(result.triggerPhrase).toBe("@dsh");
     expect(result.labelTrigger).toBe("");
     expect(result.assigneeTrigger).toBe("");
@@ -224,6 +236,7 @@ describe("loadInputs", () => {
   it.each([
     ["allow-write", "yes"],
     ["progress-comment", "yes"],
+    ["progress-log", "yes"],
     ["timeout-minutes", "0"],
     ["max-findings", "101"],
     ["test-commands", '["npm test"]'],

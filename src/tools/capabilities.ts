@@ -77,10 +77,10 @@ export const CONTROLLER_BUILTIN_CAPABILITY_CONTRACTS = Object.freeze([
     },
     requirements: {
       capabilities: ["executeRepositoryCode", "modifyWorkspace"],
-      trust: ["trusted-write"],
+      trust: ["trusted-read", "trusted-write"],
       isolation: "docker",
     },
-    denialReason: "Bash requires trusted-write repository-code execution in Docker",
+    denialReason: "Bash requires explicitly granted repository-code execution in Docker",
   },
   {
     manifest: {

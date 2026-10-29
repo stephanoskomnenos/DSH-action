@@ -32,6 +32,8 @@ export interface PolicyInput {
   readonly context: GitHubContext;
   readonly operation: Operation;
   readonly allowWrite: boolean;
+  /** Explicit Docker native.bash opt-in; grants only disposable task execution. */
+  readonly allowExecution?: boolean;
   readonly permissions: PermissionCheck;
   /** Controller-resolved intent. A model response can never upgrade this value. */
   readonly requestedAccess?: RequestedAccess;
@@ -84,6 +86,12 @@ export function evaluatePolicy(input: PolicyInput): SecurityPolicy {
     (input.requestedAccess === undefined && (operation === "fix" || operation === "implement"));
   const actorCanWrite = permissions.allActorsAllowedForWrite;
   const targetEvent = context.isPullRequestTarget;
+  const disposableExecution =
+    input.allowExecution === true &&
+    operation === "task" &&
+    input.requestedAccess === "read" &&
+    sameRepository &&
+    actorCanWrite;
 
   const readCapabilities: Capabilities = {
     ...noCapabilities,
@@ -92,6 +100,8 @@ export function evaluatePolicy(input: PolicyInput): SecurityPolicy {
     publishComments: true,
     loadExtensions: sameRepository && actorCanWrite,
     accessNetwork: sameRepository && actorCanWrite,
+    executeRepositoryCode: disposableExecution,
+    modifyWorkspace: disposableExecution,
   };
 
   if (input.commandSource === "mention" && !actorCanWrite) {
@@ -108,8 +118,9 @@ export function evaluatePolicy(input: PolicyInput): SecurityPolicy {
     return {
       trust: sameRepository && actorCanWrite ? "trusted-read" : "untrusted",
       allowed: true,
-      reason:
-        repositoryState === "same"
+      reason: disposableExecution
+        ? "Explicit disposable task execution; scratch changes are discarded and repository mutation authority remains denied"
+        : repositoryState === "same"
           ? "Read-only operation; repository content remains untrusted data"
           : "Unresolved or fork pull request restricted to non-executing review or diagnosis",
       capabilities: readCapabilities,

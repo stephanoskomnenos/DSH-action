@@ -126,6 +126,7 @@ an actual `needs_tool` result is ineligible for terminal formatting repair.
 | `isolation`              | `docker`                                                                                                          | Trusted capability input selecting the DSH isolation backend. 'none' removes the OS/container boundary; Docker is required for untrusted review data, writes, and extensions.                                                                             |
 | `container-image`        | `docker.io/library/node:24.18.0-bookworm@sha256:5711a0d445a1af54af9589066c646df387d1831a608226f4cd694fc59e745059` | Trusted worker-code input. Every value must be one Docker/OCI image reference and cannot be parsed as a Docker option; extensions and writes require a full name@sha256 digest.                                                                           |
 | `timeout-minutes`        | `20`                                                                                                              | Overall setup/execution deadline shared by runtime and extension install, DSH turns, command tools, and validation. Fixed short cleanup/finalization grace may run after it.                                                                              |
+| `progress-log`           | `false`                                                                                                           | Show DSH committed text/thinking, tool names, inputs, results and timing in Action logs, with credential redaction. Logs may contain source content; final validation remains authoritative.                                                              |
 | `max-turns`              | `3`                                                                                                               | Maximum fresh DSH turns across tool requests and validation repair attempts.                                                                                                                                                                              |
 
 <!-- END GENERATED ACTION INPUTS: runtime -->
@@ -263,11 +264,11 @@ for complete workflow templates.
 
 ### Permission profiles
 
-| Profile    | Preset request                                                          | Intended use                                                                                   |
-| ---------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `strict`   | `workspace.read`, `workspace.search`, `workspace.edit`                  | Default, review, and v0.4-compatible behavior. Edit remains ineffective outside trusted write. |
-| `standard` | `strict` plus `native.bash`, `native.web-search`, and `native.subagent` | Trusted maintainer coding tasks. Bash and subagent still require trusted-write Docker policy.  |
-| `custom`   | No preset                                                               | Exact tools, command tools, MCP, Bundle, or Plugin configuration. List every tool explicitly.  |
+| Profile    | Preset request                                                          | Intended use                                                                                                                           |
+| ---------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `strict`   | `workspace.read`, `workspace.search`, `workspace.edit`                  | Default, review, and v0.4-compatible behavior. Edit remains ineffective outside trusted write.                                         |
+| `standard` | `strict` plus `native.bash`, `native.web-search`, and `native.subagent` | Trusted maintainer coding tasks. Subagent requires trusted-write Docker; disposable read-task Bash requires the explicit opt-in below. |
+| `custom`   | No preset                                                               | Exact tools, command tools, MCP, Bundle, or Plugin configuration. List every tool explicitly.                                          |
 
 In controlled mode, `allowed-tools` adds exact requests after preset expansion;
 it does not replace a `strict` or `standard` preset. Use `custom` for a minimal
@@ -374,9 +375,17 @@ These canonical IDs apply to `dsh-mode: controlled`:
   download GitHub-hosted images without a separate image permission or input.
 - `workspace.edit` requires effective trusted-write authority and is followed by
   actual-change inspection and Controller validation.
-- `native.bash` is opt-in through `standard` or `custom`, requires trusted-write
-  Docker, runs bounded foreground commands without credentials, and cannot
-  share a worker with a bridge-networked extension.
+- `native.bash` runs bounded foreground commands in Docker without Controller
+  credentials. Trusted-write tasks retain their existing publication policy.
+  For a same-repository, trusted-actor `task-access: read` task, explicitly adding
+  `native.bash` to `allowed-tools` permits disposable execution while keeping
+  `allow-write: false`: the worker gets a writable temporary workspace, normal
+  bridge-network access, and pnpm 12.14.0 bootstrapped inside the worker. Installs,
+  tests and temporary edits are discarded; the Controller only returns/publishes
+  the task answer and never commits or pushes that workspace. GitHub, CMS,
+  deployment and real model credentials are not inherited by the worker.
+  Its Bash call cap and default are 30 minutes, always shortened by the remaining
+  overall deadline. The worker still cannot share a bridge-networked extension.
 - `native.web-search` uses the Controller-mediated DeepSeek Search API.
 - `native.web-fetch` explicitly enables the Fetch API through the same proxy; it
   is not included in the standard preset. Both use `base-url` and expose neither

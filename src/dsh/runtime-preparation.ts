@@ -68,7 +68,7 @@ async function bindRuntime(
     extensionConfigurationDigest: extensions.configurationDigest,
     nativeRuntimeTools: composition.runtimeToolNames(context.nativeTools),
     workspaceWrite: context.workspaceWrite,
-    network: extensions.network,
+    network: context.network,
     profileSchemaVersion: composition.profileSchemaVersion,
   });
   if (runtime.installedVersion !== undefined && runtime.installedVersion !== request.dshVersion) {
@@ -130,8 +130,8 @@ async function prepareWorkerNetwork(
   execute: DshProcessExecutor,
   executeSetup: ReturnType<typeof setupExecutor>,
 ): Promise<{ readonly name: string; readonly gateway: string }> {
-  const name = context.extensions.network ? "bridge" : `dsh-action-internal-${randomUUID()}`;
-  if (!context.extensions.network) {
+  const name = context.network ? "bridge" : `dsh-action-internal-${randomUUID()}`;
+  if (!context.network) {
     const cleanup: BestEffortCleanupTask = {
       label: "Docker network",
       // The caller may have removed its workspace before a late create settles.

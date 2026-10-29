@@ -629,71 +629,78 @@ describe("runDsh lifecycle", () => {
     expect(limitsSeen?.timeoutMs).toBe(625);
   });
 
-  it("applies independent setup and agent caps while forwarding the request signal", async () => {
-    const fixture = await fixtures();
-    const proxy = fakeProxy();
-    const controller = new AbortController();
-    const observed: { readonly spec: DshProcessSpec; readonly limits: DshProcessLimits }[] = [];
-    let clock = 1_000;
+  it.each([
+    { totalMinutes: 40, requestedMinutes: 45, expectedWorkerMinutes: 30 },
+    { totalMinutes: 20, requestedMinutes: 30, expectedWorkerMinutes: 14 },
+    { totalMinutes: 40, requestedMinutes: 5, expectedWorkerMinutes: 5 },
+  ])(
+    "bounds the worker by its 30-minute cap, requested $requestedMinutes minutes and total $totalMinutes minutes",
+    async ({ totalMinutes, requestedMinutes, expectedWorkerMinutes }) => {
+      const fixture = await fixtures();
+      const proxy = fakeProxy();
+      const controller = new AbortController();
+      const observed: { readonly spec: DshProcessSpec; readonly limits: DshProcessLimits }[] = [];
+      let clock = 1_000;
 
-    await runDsh(
-      request({
-        isolation: "docker",
-        workspacePath: fixture.workspace,
-        deadlineMs: clock + 20 * 60_000,
-        timeoutMs: PHASE_TIMEOUTS.agentTurnMs,
-        signal: controller.signal,
-      }),
-      {
-        assetsDirectory: fixture.assets,
-        temporaryDirectory: fixture.root,
-        now: () => clock,
-        startProxy: () => Promise.resolve(proxy),
-        executeProcess: (spec, limits) => {
-          observed.push({ spec, limits });
-          const inspected = networkInspectResult(spec);
-          if (spec.args.includes("ci")) clock += 4 * 60_000;
-          if (spec.args[0] === "network" && spec.args[1] === "create") clock += 60_000;
-          if (inspected !== undefined) {
-            clock += 60_000;
-            return Promise.resolve(inspected);
-          }
-          const isDsh = spec.args.includes(CONTAINER_LAUNCHER);
-          return Promise.resolve({
-            stdout: isDsh
-              ? JSON.stringify({
-                  protocolVersion: 1,
-                  operation: "review",
-                  state: "final",
-                  summary: "Done.",
-                  findings: [],
-                })
-              : "",
-            stderr: "",
-            exitCode: 0,
-            signal: null,
-          });
+      await runDsh(
+        request({
+          isolation: "docker",
+          workspacePath: fixture.workspace,
+          deadlineMs: clock + totalMinutes * 60_000,
+          timeoutMs: requestedMinutes * 60_000,
+          signal: controller.signal,
+        }),
+        {
+          assetsDirectory: fixture.assets,
+          temporaryDirectory: fixture.root,
+          now: () => clock,
+          startProxy: () => Promise.resolve(proxy),
+          executeProcess: (spec, limits) => {
+            observed.push({ spec, limits });
+            const inspected = networkInspectResult(spec);
+            if (spec.args.includes("ci")) clock += 4 * 60_000;
+            if (spec.args[0] === "network" && spec.args[1] === "create") clock += 60_000;
+            if (inspected !== undefined) {
+              clock += 60_000;
+              return Promise.resolve(inspected);
+            }
+            const isDsh = spec.args.includes(CONTAINER_LAUNCHER);
+            return Promise.resolve({
+              stdout: isDsh
+                ? JSON.stringify({
+                    protocolVersion: 1,
+                    operation: "review",
+                    state: "final",
+                    summary: "Done.",
+                    findings: [],
+                  })
+                : "",
+              stderr: "",
+              exitCode: 0,
+              signal: null,
+            });
+          },
         },
-      },
-    );
+      );
 
-    const runtimeInstall = observed.find(({ spec }) => spec.args.includes("ci"));
-    const networkCreate = observed.find(
-      ({ spec }) => spec.args[0] === "network" && spec.args[1] === "create",
-    );
-    const networkInspect = observed.find(({ spec }) => spec.args[1] === "inspect");
-    const worker = observed.find(({ spec }) => spec.args.includes(CONTAINER_LAUNCHER));
-    const networkCleanup = observed.find(
-      ({ spec }) => spec.args[0] === "network" && spec.args[1] === "rm",
-    );
-    expect(runtimeInstall?.limits.timeoutMs).toBe(PHASE_TIMEOUTS.runtimeInstallMs);
-    expect(networkCreate?.limits.timeoutMs).toBe(PHASE_TIMEOUTS.setupMs);
-    expect(networkInspect?.limits.timeoutMs).toBe(PHASE_TIMEOUTS.setupMs);
-    expect(worker?.limits.timeoutMs).toBe(PHASE_TIMEOUTS.agentTurnMs);
-    for (const phase of [runtimeInstall, networkCreate, networkInspect, worker]) {
-      expect(phase?.limits.signal).toBe(controller.signal);
-    }
-    expect(networkCleanup?.limits).toMatchObject({ timeoutMs: PHASE_TIMEOUTS.cleanupMs });
-    expect(networkCleanup?.limits.signal).toBeUndefined();
-  });
+      const runtimeInstall = observed.find(({ spec }) => spec.args.includes("ci"));
+      const networkCreate = observed.find(
+        ({ spec }) => spec.args[0] === "network" && spec.args[1] === "create",
+      );
+      const networkInspect = observed.find(({ spec }) => spec.args[1] === "inspect");
+      const worker = observed.find(({ spec }) => spec.args.includes(CONTAINER_LAUNCHER));
+      const networkCleanup = observed.find(
+        ({ spec }) => spec.args[0] === "network" && spec.args[1] === "rm",
+      );
+      expect(runtimeInstall?.limits.timeoutMs).toBe(PHASE_TIMEOUTS.runtimeInstallMs);
+      expect(networkCreate?.limits.timeoutMs).toBe(PHASE_TIMEOUTS.setupMs);
+      expect(networkInspect?.limits.timeoutMs).toBe(PHASE_TIMEOUTS.setupMs);
+      expect(worker?.limits.timeoutMs).toBe(expectedWorkerMinutes * 60_000);
+      for (const phase of [runtimeInstall, networkCreate, networkInspect, worker]) {
+        expect(phase?.limits.signal).toBe(controller.signal);
+      }
+      expect(networkCleanup?.limits).toMatchObject({ timeoutMs: PHASE_TIMEOUTS.cleanupMs });
+      expect(networkCleanup?.limits.signal).toBeUndefined();
+    },
+  );
 });

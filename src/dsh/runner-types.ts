@@ -26,6 +26,8 @@ export interface DshRunRequest extends DshModelSettings {
   /** Agent execution cap, applied after setup and still bounded by deadlineMs. */
   readonly timeoutMs: number;
   readonly maxOutputBytes: number;
+  /** Opt-in detailed DSH logs with credential redaction and bounded output. */
+  readonly progressLog?: boolean;
   /** Controller-only credential. It is never put in a worker env or argv. */
   readonly apiKey: string;
   /** Other Controller-only credentials to reject from every worker channel. */
@@ -85,6 +87,7 @@ export interface DshRunDependencies {
   /** Internal composition seam. The Action default remains ControlledComposition. */
   readonly composition?: DshComposition;
   readonly warning?: (message: string) => void;
+  readonly info?: (message: string) => void;
   /** Test seam for the single tool-free result formatting request. */
   readonly resultRepairFetch?: typeof fetch;
 }

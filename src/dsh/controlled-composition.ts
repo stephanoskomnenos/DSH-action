@@ -124,7 +124,7 @@ export class ControlledComposition implements DshComposition {
       extensionProfile: "github-action",
       limitations: [
         ...(options.extensionNetwork
-          ? ["Explicitly network-enabled extensions share the worker's Docker bridge egress."]
+          ? ["Explicitly network-enabled workers use Docker bridge egress."]
           : [
               "The worker's internal Docker network blocks ordinary external egress; host-gateway access still depends on runner firewall policy.",
             ]),

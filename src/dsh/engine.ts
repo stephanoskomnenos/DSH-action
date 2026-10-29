@@ -120,6 +120,7 @@ export class DshAgentEngine implements AgentEngine<DshRunResult> {
         timeoutMs: request.timeoutMs,
         ...(request.signal === undefined ? {} : { signal: request.signal }),
         maxOutputBytes: 2 * 1024 * 1024,
+        progressLog: this.inputs.progressLog,
         apiKey: this.inputs.deepseekApiKey,
         controllerCredentials: [this.inputs.githubToken],
         baseUrl: this.inputs.baseUrl,

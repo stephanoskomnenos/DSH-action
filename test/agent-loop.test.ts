@@ -385,7 +385,7 @@ describe("Controller Session lifecycle hooks", () => {
         task(),
         inputs(),
         {
-          deadlineMs: Date.now() + 20 * 60_000,
+          deadlineMs: Date.now() + 40 * 60_000,
           blocked: () => Promise.resolve("blocked"),
           finalize: () => Promise.resolve("done"),
         },
@@ -396,10 +396,10 @@ describe("Controller Session lifecycle hooks", () => {
             runTurn: async (request) => {
               requests.push(request);
               await new Promise<void>((resolve) => setTimeout(resolve, 4 * 60_000));
-              await new Promise<void>((resolve) => setTimeout(resolve, 9 * 60_000));
+              await new Promise<void>((resolve) => setTimeout(resolve, 29 * 60_000));
               return {
                 output: output("final"),
-                durationMs: 13 * 60_000,
+                durationMs: 33 * 60_000,
                 isolationReport: isolation,
               };
             },
@@ -410,9 +410,9 @@ describe("Controller Session lifecycle hooks", () => {
         (result) => result,
         (error: unknown) => error,
       );
-      await vi.advanceTimersByTimeAsync(13 * 60_000);
+      await vi.advanceTimersByTimeAsync(33 * 60_000);
       expect(await outcome).toMatchObject({ finalization: "done" });
-      expect(requests[0]?.timeoutMs).toBe(10 * 60_000);
+      expect(requests[0]?.timeoutMs).toBe(30 * 60_000);
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
@@ -701,33 +701,39 @@ describe("controller-owned agent loop", () => {
     ).rejects.toBeInstanceOf(DshMalformedOutputError);
   });
 
-  it("caps an Agent turn independently and forwards the run cancellation signal", async () => {
-    const controller = new AbortController();
-    const requests: AgentTurnRequest[] = [];
-    const result = await runAgentLoop(
-      task(),
-      inputs(),
-      {
-        deadlineMs: 2_000_000,
-        signal: controller.signal,
-        blocked: () => Promise.resolve("blocked"),
-        finalize: () => Promise.resolve("done"),
-      },
-      {
-        now: () => 1_000,
-        createRuntime: () => Promise.resolve(runtime),
-        disposeRuntime: () => Promise.resolve(),
-        createEngine: () => engine([output("final")], requests),
-      },
-    );
+  it.each([
+    { deadlineMs: 2_000_000, expectedTimeoutMs: 30 * 60_000 },
+    { deadlineMs: 901_000, expectedTimeoutMs: 15 * 60_000 },
+  ])(
+    "caps an Agent turn by 30 minutes and remaining deadline $deadlineMs",
+    async ({ deadlineMs, expectedTimeoutMs }) => {
+      const controller = new AbortController();
+      const requests: AgentTurnRequest[] = [];
+      const result = await runAgentLoop(
+        task(),
+        inputs(),
+        {
+          deadlineMs,
+          signal: controller.signal,
+          blocked: () => Promise.resolve("blocked"),
+          finalize: () => Promise.resolve("done"),
+        },
+        {
+          now: () => 1_000,
+          createRuntime: () => Promise.resolve(runtime),
+          disposeRuntime: () => Promise.resolve(),
+          createEngine: () => engine([output("final")], requests),
+        },
+      );
 
-    expect(result.finalization).toBe("done");
-    expect(requests[0]?.deadlineMs).toBe(2_000_000);
-    expect(requests[0]?.timeoutMs).toBe(10 * 60_000);
-    expect(requests[0]?.signal?.aborted).toBe(false);
-    controller.abort();
-    expect(requests[0]?.signal?.aborted).toBe(true);
-  });
+      expect(result.finalization).toBe("done");
+      expect(requests[0]?.deadlineMs).toBe(deadlineMs);
+      expect(requests[0]?.timeoutMs).toBe(expectedTimeoutMs);
+      expect(requests[0]?.signal?.aborted).toBe(false);
+      controller.abort();
+      expect(requests[0]?.signal?.aborted).toBe(true);
+    },
+  );
 
   it("stops before invoking the Agent when the run was cancelled", async () => {
     const controller = new AbortController();

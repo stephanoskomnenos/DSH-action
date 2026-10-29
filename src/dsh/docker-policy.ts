@@ -123,10 +123,20 @@ export function dockerControllerEnvironment(
 function containerEnvironment(
   proxy: DeepSeekProxyHandle,
   workspaceWrite: boolean,
+  disposableExecution: boolean,
 ): Readonly<Record<string, string>> {
   return {
     CI: "true",
-    HOME: CONTAINER_DSH_HOME,
+    HOME: disposableExecution ? "/workspace/.dsh-home" : CONTAINER_DSH_HOME,
+    ...(disposableExecution
+      ? {
+          PATH: "/workspace/.dsh-tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          PNPM_HOME: "/workspace/.dsh-tools/bin",
+          XDG_CACHE_HOME: "/workspace/.dsh-cache",
+          XDG_DATA_HOME: "/workspace/.dsh-data",
+          COREPACK_ENABLE_AUTO_PIN: "0",
+        }
+      : {}),
     npm_config_cache: "/tmp/npm-cache",
     DSH_HOME: CONTAINER_DSH_HOME,
     DSH_PERMISSION_MODE: workspaceWrite ? "workspace-write" : "read-only",
@@ -157,6 +167,7 @@ interface DockerWorkerSpecOptions {
   readonly workerEnvironment: NodeJS.ProcessEnv;
   readonly proxy: DeepSeekProxyHandle;
   readonly workspaceWrite: boolean;
+  readonly disposableExecution?: boolean;
 }
 
 export function dockerWorkerSpec(options: DockerWorkerSpecOptions): DshProcessSpec {
@@ -191,7 +202,9 @@ export function dockerWorkerSpec(options: DockerWorkerSpecOptions): DshProcessSp
     "--add-host",
     `host.docker.internal:${options.hostGateway}`,
     "--tmpfs",
-    "/tmp:rw,noexec,nosuid,nodev,size=536870912",
+    options.disposableExecution === true
+      ? "/tmp:rw,nosuid,nodev,size=536870912"
+      : "/tmp:rw,noexec,nosuid,nodev,size=536870912",
     "--volume",
     `${options.workspace}:${CONTAINER_WORKSPACE}:${options.workspaceWrite ? "rw" : "ro"}`,
     "--volume",
@@ -224,11 +237,26 @@ export function dockerWorkerSpec(options: DockerWorkerSpecOptions): DshProcessSp
     );
   }
   for (const [name, value] of Object.entries(
-    containerEnvironment(options.proxy, options.workspaceWrite),
+    containerEnvironment(
+      options.proxy,
+      options.workspaceWrite,
+      options.disposableExecution === true,
+    ),
   )) {
     args.push("--env", `${name}=${value}`);
   }
-  args.push(options.containerImage, options.launchPlan.command, ...options.launchPlan.args);
+  args.push(options.containerImage);
+  if (options.disposableExecution === true) {
+    // Bootstrap only inside the same disposable, credential-free worker. Keep
+    // npm output off JSONL stdout and count installation against the worker deadline.
+    args.push(
+      "/bin/sh",
+      "-ec",
+      'mkdir -p "$HOME" && npm install --global --prefix /workspace/.dsh-tools --ignore-scripts --no-audit --no-fund --loglevel=error pnpm@12.14.0 >&2 && exec "$@"',
+      "dsh-worker",
+    );
+  }
+  args.push(options.launchPlan.command, ...options.launchPlan.args);
 
   const nameIndex = args.indexOf("--name") + 1;
   const containerName = args[nameIndex];

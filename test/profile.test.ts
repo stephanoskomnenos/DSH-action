@@ -104,6 +104,13 @@ describe("controlled official DSH Profile", () => {
     const row = (id: string) => rows.find((candidate) => candidate.id === id);
 
     expect(row("tool-bash")?.config).toEqual({ enableRunInBackground: false });
+    expect(row("bash-sandbox")?.config).toEqual({
+      timeoutMs: 30 * 60_000,
+      maxTimeoutMs: 30 * 60_000,
+    });
+    expect(rendered.rules.find(({ runtimeName }) => runtimeName === "bash")?.timeoutMs).toBe(
+      30 * 60_000,
+    );
     expect(row("tool-web")?.config).toMatchObject({ search: true, fetch: false });
     expect(row("tool-subagent")?.config).toMatchObject({
       provider: "spawn",

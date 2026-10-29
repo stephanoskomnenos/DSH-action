@@ -388,6 +388,15 @@ export const ACTION_INPUT_CONTRACT = [
     docsGroup: "operation",
   },
   {
+    name: "progress-log",
+    runtimeKey: "progressLog",
+    required: false,
+    default: "false",
+    description:
+      "Show DSH committed text/thinking, tool names, inputs, results and timing in Action logs, with credential redaction. Logs may contain source content; final validation remains authoritative.",
+    docsGroup: "runtime",
+  },
+  {
     name: "max-turns",
     runtimeKey: "maxTurns",
     required: false,

@@ -171,8 +171,21 @@ export function prepareWorkspaceOperation(
         return validationBudget;
       };
 
+      const disposableExecution =
+        command.operation === "task" &&
+        command.requestedAccess === "read" &&
+        policy.trust === "trusted-read" &&
+        policy.capabilities.executeRepositoryCode &&
+        policy.capabilities.modifyWorkspace &&
+        !policy.capabilities.commit &&
+        !policy.capabilities.push;
+      // Dependency installs/builds may create symlinks and generated files.
+      // This scratch tree is discarded by the workspace owner, never inspected
+      // as a publication candidate or routed into the repository write path.
       const changes =
-        workspaceCopy === undefined ? undefined : await inspectWorkspaceChanges(workspaceCopy);
+        disposableExecution || workspaceCopy === undefined
+          ? undefined
+          : await inspectWorkspaceChanges(workspaceCopy);
       if (changes?.all.length === 0 && command.requestedAccess === "write") {
         lifecycle.enter("validation");
         remainingControllerMs();

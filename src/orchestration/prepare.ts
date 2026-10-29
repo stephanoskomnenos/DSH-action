@@ -159,6 +159,10 @@ export class RunPreparation {
       context,
       operation: command.operation,
       allowWrite: inputs.allowWrite,
+      allowExecution:
+        inputs.isolation === "docker" &&
+        inputs.allowedTools.includes("native.bash") &&
+        !inputs.disallowedTools.includes("native.bash"),
       permissions,
       requestedAccess: command.requestedAccess,
       commandSource: command.source,

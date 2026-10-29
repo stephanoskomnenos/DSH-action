@@ -36,6 +36,8 @@ export interface DshProcessLimits {
   readonly maxCombinedBytes: number;
   readonly signal?: AbortSignal;
   readonly killGraceMs?: number;
+  /** Best-effort telemetry; receives a copy, never the authoritative buffer. */
+  readonly onStdout?: (chunk: Buffer) => void;
 }
 
 function positiveInteger(value: number, name: string): void {
@@ -172,6 +174,13 @@ export async function executeBoundedDshProcess(
         return;
       }
       (stream === "stdout" ? stdoutChunks : stderrChunks).push(chunk);
+      if (stream === "stdout" && limits.onStdout !== undefined) {
+        try {
+          limits.onStdout(Buffer.from(chunk));
+        } catch {
+          // Observability must not weaken caps, deadlines or result parsing.
+        }
+      }
     };
 
     child.stdout.on("data", (value: unknown) => capture("stdout", value));

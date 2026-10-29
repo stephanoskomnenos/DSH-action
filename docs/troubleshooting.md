@@ -48,6 +48,33 @@ authorization or tamper-proof security evidence. Keep their strings in data
 channels such as environment variables; do not interpolate them into shell
 source.
 
+## The DSH worker is quiet or times out
+
+Set `progress-log: true` on the Action step to see DSH's emitted thinking and
+text, actual tool names and parameters (including paths, queries and URLs),
+tool results/errors, final text and elapsed time. Multiline content is prefixed
+so it cannot become a GitHub Actions workflow command. Known credentials,
+credential-named fields and URL tokens are redacted. These detailed logs can
+contain repository/source content; keep that in mind when choosing log access.
+
+This uses the existing official `--json` stream, not a new model request. DSH
+emits text/thinking after its assistant message is committed, not token by
+token while the model is still generating. Only received events and the
+terminal summary are logged; there is no heartbeat. Upstream truncated events
+are marked. Logs share the worker's output-byte budget (2 MiB in the Action),
+with a reserved terminal summary, rather than stopping after 200 lines.
+
+Displayed final text is still untrusted. Only the unchanged result parser and
+worker checks produce `outcome=validated`; timeout, cancellation and output
+limits still fail the run. Already emitted logs remain visible after failure.
+`validated` describes the worker result, not later Controller validation,
+publication or merging. Logs are off by default.
+
+The worker-turn cap is 30 minutes. The existing `timeout-minutes` input remains
+the overall run deadline, so installation/setup consume part of that budget;
+setting it to 30 does not restart a fresh 30-minute clock after setup. Shorter
+configured deadlines still win. Validation and other phase limits are unchanged.
+
 ## The installer stops before creating workflows
 
 Installer `0.7.4` targets formal Action `v0.12.2`. Without options, use an

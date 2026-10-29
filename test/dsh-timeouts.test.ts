@@ -7,6 +7,19 @@ afterEach(() => {
 });
 
 describe("DSH phase budgets", () => {
+  it("allows a 30-minute Agent turn without extending other phases or the run deadline", () => {
+    expect(PHASE_TIMEOUTS.agentTurnMs).toBe(30 * 60_000);
+    expect(phaseTimeoutMs(60 * 60_000, PHASE_TIMEOUTS.agentTurnMs, () => 0)).toBe(30 * 60_000);
+    expect(phaseTimeoutMs(20 * 60_000, PHASE_TIMEOUTS.agentTurnMs, () => 5 * 60_000)).toBe(
+      15 * 60_000,
+    );
+    expect(PHASE_TIMEOUTS.runtimeInstallMs).toBe(5 * 60_000);
+    expect(PHASE_TIMEOUTS.extensionInstallMs).toBe(5 * 60_000);
+    expect(PHASE_TIMEOUTS.setupMs).toBe(60_000);
+    expect(PHASE_TIMEOUTS.validationMs).toBe(10 * 60_000);
+    expect(PHASE_TIMEOUTS.cleanupMs).toBe(5_000);
+  });
+
   it("uses the smaller of each phase cap and the total deadline remaining", () => {
     expect(phaseTimeoutMs(1_000_000, PHASE_TIMEOUTS.runtimeInstallMs, () => 100)).toBe(
       PHASE_TIMEOUTS.runtimeInstallMs,

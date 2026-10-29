@@ -1,3 +1,4 @@
+import { PHASE_TIMEOUTS } from "./timeouts.js";
 import { isRecord } from "../security/record.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -82,7 +83,7 @@ function nativeRuleLimits(
   if (id === "native.bash") {
     return {
       groupId: "builtin.bash",
-      timeoutMs: 65_000,
+      timeoutMs: PHASE_TIMEOUTS.agentTurnMs,
       maxOutputBytes: 512 * 1024,
       maxCalls: 40,
       groupMaxCalls: 40,
@@ -276,6 +277,14 @@ function controlledRows(
     },
     ...(enabled.has("native.bash")
       ? [
+          {
+            id: "bash-sandbox",
+            name: "@deepseek-ai/dsh-bash-sandbox",
+            config: {
+              timeoutMs: PHASE_TIMEOUTS.agentTurnMs,
+              maxTimeoutMs: PHASE_TIMEOUTS.agentTurnMs,
+            },
+          },
           {
             id: "tool-bash",
             name: "@deepseek-ai/dsh-tool-bash",

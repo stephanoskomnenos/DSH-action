@@ -178,8 +178,8 @@ describe("maintainer-defined command tools", () => {
         },
         {
           id: "native.bash",
-          reasonCode: "TRUST_REQUIRED",
-          reason: "Bash requires trusted-write repository-code execution in Docker",
+          reasonCode: "CAPABILITY_NOT_GRANTED",
+          reason: "Bash requires explicitly granted repository-code execution in Docker",
         },
         {
           id: "native.web-search",
@@ -213,8 +213,8 @@ describe("maintainer-defined command tools", () => {
       deniedTools: [
         {
           id: "native.bash",
-          reasonCode: "TRUST_REQUIRED",
-          reason: "Bash requires trusted-write repository-code execution in Docker",
+          reasonCode: "CAPABILITY_NOT_GRANTED",
+          reason: "Bash requires explicitly granted repository-code execution in Docker",
         },
         {
           id: "native.subagent",

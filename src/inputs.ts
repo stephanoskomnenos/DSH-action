@@ -88,6 +88,7 @@ export function loadInputs(reader: InputReader = core.getInput): ActionInputs {
     webSearchBaseUrl: optionalInput(reader, "webSearchBaseUrl"),
     botUserId: optionalInput(reader, "botUserId"),
     progressComment: optionalInput(reader, "progressComment"),
+    progressLog: optionalInput(reader, "progressLog"),
     triggerPhrase: optionalInput(reader, "triggerPhrase"),
     labelTrigger: optionalInput(reader, "labelTrigger"),
     assigneeTrigger: optionalInput(reader, "assigneeTrigger"),

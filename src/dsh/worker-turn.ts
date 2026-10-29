@@ -24,6 +24,7 @@ import {
 import { decodeHeadlessResult, headlessModelUsage } from "./headless-output.js";
 import { repairDshOutput } from "./output-repair.js";
 import { executeBoundedDshProcess, type DshProcessResult, type DshProcessSpec } from "./process.js";
+import { DshProgressObserver } from "./progress.js";
 import { startDeepSeekProxy, type DeepSeekProxyHandle } from "./proxy.js";
 import type { DshRunContext } from "./runner-context.js";
 import {
@@ -220,6 +221,7 @@ export class DshWorker {
     for (const secret of secrets) runtime.session?.knownSecrets.add(secret);
     const { request } = context;
     const evidence = new DshTurnEvidence(prepared.composition, scope, secrets);
+    let progress: DshProgressObserver | undefined;
     try {
       const workerEnvironment = buildDshWorkerEnvironment({
         source: context.environment,
@@ -249,10 +251,18 @@ export class DshWorker {
           workerEnvironment,
           proxy,
           workspaceWrite: context.workspaceWrite,
+          disposableExecution: context.disposableExecution,
         });
       } else spec = { ...composition.launchPlan, env: workerEnvironment };
       assertWorkerLaunchHasNoControllerCredentials(spec, context.secrets);
       const remainingMs = scope.remaining(Math.min(request.timeoutMs, PHASE_TIMEOUTS.agentTurnMs));
+      if (request.progressLog === true)
+        progress = new DshProgressObserver(
+          dependencies.info ?? core.info,
+          secrets,
+          scope.now,
+          request.maxOutputBytes,
+        );
       let processResult: DshProcessResult | undefined;
       let output: DshOutput | undefined;
       let failure: unknown;
@@ -263,6 +273,9 @@ export class DshWorker {
             maxStdoutBytes: request.maxOutputBytes,
             maxStderrBytes: Math.min(request.maxOutputBytes, 2 * 1024 * 1024),
             maxCombinedBytes: request.maxOutputBytes,
+            ...(progress === undefined
+              ? {}
+              : { onStdout: (chunk: Buffer) => progress?.observe(chunk) }),
             ...(scope.signal === undefined ? {} : { signal: scope.signal }),
           }),
         );
@@ -287,6 +300,7 @@ export class DshWorker {
         runtime,
         context.composition,
       );
+      progress?.finish();
       return {
         output,
         rawStdout: processResult.stdout,
@@ -297,6 +311,7 @@ export class DshWorker {
         ...evidence.fields(),
       };
     } catch (error: unknown) {
+      progress?.finish(error ?? new Error("DSH worker failed"));
       if (error instanceof DshError)
         error.attachTelemetry({
           durationMs: Math.max(0, scope.now() - scope.startedAt),

@@ -114,7 +114,8 @@ export function collectControllerSecrets(
     if (
       value !== undefined &&
       value.length >= minimumLength &&
-      (isGitHubCredentialName(name) || name === "DEEPSEEK_API_KEY")
+      (isGitHubCredentialName(name) ||
+        /(?:^|_)(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIALS?)$/iu.test(name))
     ) {
       secrets.push(value);
     }

@@ -166,6 +166,10 @@ inputs:
     description: "Create or update one controller-owned sticky comment at major lifecycle stages, reusing the operation's result marker."
     required: false
     default: "true"
+  progress-log:
+    description: "Show DSH committed text/thinking, tool names, inputs, results and timing in Action logs, with credential redaction. Logs may contain source content; final validation remains authoritative."
+    required: false
+    default: "false"
   max-turns:
     description: "Maximum fresh DSH turns across tool requests and validation repair attempts."
     required: false

@@ -5,6 +5,7 @@ import {
   assertNoGitHubCredentials,
   assertNoSecretOutput,
   buildDshWorkerEnvironment,
+  collectControllerSecrets,
   redactKnownSecrets,
 } from "../src/security/env.js";
 
@@ -15,6 +16,9 @@ describe("DSH worker environment", () => {
         PATH: "/bin",
         GITHUB_TOKEN: "github-secret",
         GH_TOKEN: "gh-secret",
+        CMS_API_KEY: "cms-secret",
+        DEPLOY_KEY: "deploy-secret",
+        NPM_TOKEN: "npm-secret",
         ACTIONS_RUNTIME_TOKEN: "artifact-controller-secret",
         DEEPSEEK_API_KEY: "raw-key",
         ATTACKER_CONTROLLED: "payload",
@@ -40,6 +44,8 @@ describe("DSH worker environment", () => {
     });
     expect(environment).not.toHaveProperty("GITHUB_TOKEN");
     expect(environment).not.toHaveProperty("GH_TOKEN");
+    for (const name of ["CMS_API_KEY", "DEPLOY_KEY", "NPM_TOKEN"])
+      expect(environment).not.toHaveProperty(name);
     expect(environment).not.toHaveProperty("ACTIONS_RUNTIME_TOKEN");
     expect(environment).not.toHaveProperty("ATTACKER_CONTROLLED");
     expect(environment).not.toHaveProperty("NARB_NATIVE_CACHE_DIR");
@@ -73,4 +79,15 @@ describe("DSH worker environment", () => {
       "authorization: Bearer [REDACTED] [REDACTED]",
     );
   });
+});
+
+it("recognizes CMS and deployment keys as withheld Controller credentials", () => {
+  expect(
+    collectControllerSecrets({
+      CMS_API_KEY: "cms-secret",
+      DEPLOY_KEY: "deploy-secret",
+      CMS_SECRET: "cms-other",
+      PATH: "/bin",
+    }),
+  ).toEqual(["cms-secret", "deploy-secret", "cms-other"]);
 });

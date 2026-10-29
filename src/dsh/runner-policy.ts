@@ -68,6 +68,16 @@ function defaultNativeTools(request: DshRunRequest): readonly NativeToolId[] {
   return [];
 }
 
+/** Explicit Controller tool grant for a disposable read-task sandbox, never publication. */
+export function disposableExecution(request: DshRunRequest): boolean {
+  return (
+    request.operation === "task" &&
+    request.trust === "trusted-read" &&
+    request.isolation === "docker" &&
+    request.nativeTools?.includes("native.bash") === true
+  );
+}
+
 export function effectiveNativeTools(request: DshRunRequest): readonly NativeToolId[] {
   const requested = request.nativeTools ?? defaultNativeTools(request);
   if (request.trust === "untrusted") return [];
@@ -76,7 +86,9 @@ export function effectiveNativeTools(request: DshRunRequest): readonly NativeToo
     (tool) =>
       request.isolation === "docker" &&
       (request.trust === "trusted-write" ||
-        (tool !== "workspace.edit" && tool !== "native.bash" && tool !== "native.subagent")),
+        (tool !== "workspace.edit" &&
+          tool !== "native.subagent" &&
+          (tool !== "native.bash" || disposableExecution(request)))),
   );
 }
 
@@ -89,6 +101,7 @@ export function workerWorkspaceWrite(request: DshRunRequest, composition: DshCom
     );
   }
   return (
+    disposableExecution(request) ||
     effectiveNativeTools(request).includes("workspace.edit") ||
     plan.tools.some((tool) => tool.permissions.includes("workspace-write"))
   );
@@ -103,7 +116,7 @@ export function isolationReport(
   const metadata = composition.isolationMetadata({
     isolation: request.isolation,
     nativeTools,
-    extensionNetwork: plan.network,
+    extensionNetwork: plan.network || disposableExecution(request),
     extensionsConfigured: plan.mcpServers.length + plan.bundles.length + plan.plugins.length > 0,
   });
   if (request.isolation === "docker") {
@@ -112,7 +125,7 @@ export function isolationReport(
       credentialMediated: true,
       repoToolsEnabled: metadata.repoToolsEnabled,
       processIsolated: true,
-      networkIsolated: !plan.network,
+      networkIsolated: !(plan.network || disposableExecution(request)),
       workspaceAccess: workerWorkspaceWrite(request, composition) ? "read-write" : "read-only",
       extensionProfile: metadata.extensionProfile,
       ...(composition.actionManagedExtensionProfile || plan.audit.entries.length > 0

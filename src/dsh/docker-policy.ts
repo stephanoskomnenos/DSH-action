@@ -139,6 +139,7 @@ function containerEnvironment(
       : {}),
     npm_config_cache: "/tmp/npm-cache",
     DSH_HOME: CONTAINER_DSH_HOME,
+    DSH_ACTION_WORKSPACE: CONTAINER_WORKSPACE,
     DSH_PERMISSION_MODE: workspaceWrite ? "workspace-write" : "read-only",
     DSH_TELEMETRY_DISABLED: "1",
     DSH_TOOLS_MODE: "native",
@@ -162,6 +163,9 @@ interface DockerWorkerSpecOptions {
   readonly packageRoot: string;
   readonly launchPlan: DshDockerLaunchPlan;
   readonly networkName: string;
+  readonly workerNetwork?: boolean;
+  readonly diagnosticLevel?: string;
+  readonly extraEnvironmentNames?: readonly string[];
   readonly hostGateway: string;
   readonly environment: NodeJS.ProcessEnv;
   readonly workerEnvironment: NodeJS.ProcessEnv;
@@ -245,14 +249,20 @@ export function dockerWorkerSpec(options: DockerWorkerSpecOptions): DshProcessSp
   )) {
     args.push("--env", `${name}=${value}`);
   }
+  args.push(
+    "--env",
+    `DSH_ACTION_WORKER_NETWORK=${options.workerNetwork !== false ? "true" : "false"}`,
+  );
+  args.push("--env", `DSH_ACTION_DIAGNOSTICS=${options.diagnosticLevel ?? "off"}`);
+  for (const name of options.extraEnvironmentNames ?? []) args.push("--env", name);
   args.push(options.containerImage);
   if (options.disposableExecution === true) {
-    // Bootstrap only inside the same disposable, credential-free worker. Keep
-    // npm output off JSONL stdout and count installation against the worker deadline.
+    // Bootstrap inside the credential-free worker and keep package output off JSONL stdout.
+    // An offline Worker retains Bash without attempting a network installation.
     args.push(
       "/bin/sh",
       "-ec",
-      'mkdir -p "$HOME" && npm install --global --prefix /workspace/.dsh-tools --ignore-scripts --no-audit --no-fund --loglevel=error pnpm@12.14.0 >&2 && exec "$@"',
+      'mkdir -p "$HOME" && if [ "$DSH_ACTION_WORKER_NETWORK" = true ]; then npm install --global --prefix /workspace/.dsh-tools --ignore-scripts --no-audit --no-fund --loglevel=error pnpm@12.16.1 >&2; fi && exec "$@"',
       "dsh-worker",
     );
   }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DshAbortedError, DshOutputLimitError, DshTimeoutError } from "../src/dsh/errors.js";
+import { RunDiagnostics } from "../src/dsh/diagnostics.js";
 import { runDsh } from "../src/dsh/runner.js";
 import { createDshFixtureManager, fakeProxy, request } from "./helpers/dsh-runner-fixtures.js";
 
@@ -31,6 +32,7 @@ describe("DSH progress lifecycle", () => {
     async (enabled) => {
       const fixture = await manager.fixtures();
       const logs: string[] = [];
+      const diagnostics = new RunDiagnostics("basic", () => undefined);
       const result = await runDsh(
         request({
           workspacePath: fixture.workspace,
@@ -42,8 +44,9 @@ describe("DSH progress lifecycle", () => {
           temporaryDirectory: fixture.root,
           startProxy: () => Promise.resolve(fakeProxy()),
           info: (line) => logs.push(line),
+          diagnostics,
           executeProcess: (_spec, limits) => {
-            expect(limits.onStdout !== undefined).toBe(enabled);
+            expect(limits.onStdout).toBeTypeOf("function");
             const bytes = Buffer.from(raw);
             for (let index = 0; index < bytes.length; index += 7)
               limits.onStdout?.(bytes.subarray(index, index + 7));
@@ -55,6 +58,9 @@ describe("DSH progress lifecycle", () => {
       );
       expect(result.output).toEqual(output);
       expect(result.rawStdout).toBe(raw);
+      expect(diagnostics.snapshot().events).toEqual(
+        expect.arrayContaining([expect.objectContaining({ phase: "tool.start", name: "read" })]),
+      );
       if (enabled) {
         expect(logs.at(-1)).toContain("event=worker_end outcome=validated");
         expect(logs.join("\n")).toMatch(/PRIVATE_THINKING/u);

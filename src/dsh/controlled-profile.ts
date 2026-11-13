@@ -1,4 +1,4 @@
-import { PHASE_TIMEOUTS } from "./timeouts.js";
+import { stageProjectProfile, type ProjectProfile } from "./project-profile.js";
 import { isRecord } from "../security/record.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -12,6 +12,7 @@ import { mcpPublicToolName } from "../extensions/plan.js";
 import type { EffectiveExtensionPlan, ExtensionToolGrant } from "../extensions/plan.js";
 
 export const CONTROLLED_PROFILE_NAME = "github-action" as const;
+const BASH_TIMEOUT_MS = 30 * 60_000;
 const PROFILE_BUNDLES = ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless"] as const;
 
 interface ControlledProfilePaths {
@@ -26,6 +27,7 @@ interface ControlledProfilePaths {
 }
 
 interface PrepareControlledProfileOptions extends DshModelSettings {
+  readonly projectProfile?: ProjectProfile;
   readonly dshHome: string;
   readonly plan: EffectiveExtensionPlan;
   readonly nativeTools: readonly NativeToolId[];
@@ -58,7 +60,7 @@ const nativeToolGroups: readonly {
   { rows: ["tool-str-replace-editor"], grants: { "workspace.edit": ["str_replace_editor"] } },
   { rows: ["tool-bash"], grants: { "native.bash": ["bash"] } },
   {
-    rows: ["web", "web-deepseek-api", "tool-web"],
+    rows: ["web", "web-deepseek-api", "web-search-deepseek", "web-fetch-http", "tool-web"],
     grants: { "native.web-search": ["web_search"], "native.web-fetch": ["web_fetch"] },
   },
   {
@@ -83,7 +85,7 @@ function nativeRuleLimits(
   if (id === "native.bash") {
     return {
       groupId: "builtin.bash",
-      timeoutMs: PHASE_TIMEOUTS.agentTurnMs,
+      timeoutMs: BASH_TIMEOUT_MS,
       maxOutputBytes: 512 * 1024,
       maxCalls: 40,
       groupMaxCalls: 40,
@@ -135,6 +137,7 @@ function knownNativeRuntimeTools(tools: readonly NativeToolId[]): readonly strin
 
 function knownExtensionRuntimeTools(plan: EffectiveExtensionPlan): readonly string[] {
   return [
+    ...plan.tools.map((tool) => tool.runtimeName),
     ...plan.mcpServers.flatMap((server) =>
       server.definition.tools.map((tool) => mcpPublicToolName(server.definition.id, tool.name)),
     ),
@@ -215,12 +218,10 @@ function pluginEntry(
 
 const ALWAYS_DISABLED_BASE_ROWS = [
   "tool-working-directory",
-  "web-search-deepseek",
   "session-title-llm",
   "session-telemetry-otel",
   "session-log-deepseek",
   "plugin-package-inventory-deepseek",
-  "web-fetch-http",
   "mcp-resources",
   "user-questions",
   "agent-instructions",
@@ -281,8 +282,8 @@ function controlledRows(
             id: "bash-sandbox",
             name: "@deepseek-ai/dsh-bash-sandbox",
             config: {
-              timeoutMs: PHASE_TIMEOUTS.agentTurnMs,
-              maxTimeoutMs: PHASE_TIMEOUTS.agentTurnMs,
+              timeoutMs: BASH_TIMEOUT_MS,
+              maxTimeoutMs: BASH_TIMEOUT_MS,
             },
           },
           {
@@ -316,7 +317,7 @@ function controlledRows(
           {
             id: "web",
             name: "@deepseek-ai/dsh-web",
-            config: { searchProvider: "deepseek-search-api", fetchProvider: "deepseek-fetch-api" },
+            config: { searchProvider: "deepseek-official", fetchProvider: "http" },
           },
           {
             id: "web-deepseek-api",
@@ -384,6 +385,7 @@ export function renderControlledProfilePatch(options: PrepareControlledProfileOp
       name: loaderModuleSpecifier(options.policyPluginPath),
       config: {
         expectedOperation: options.expectedOperation,
+        ...(options.projectProfile === undefined ? {} : { profileInventory: true }),
         allowedRuntimeTools: rules.map((rule) => rule.runtimeName),
         knownRuntimeTools: [
           ...new Set([
@@ -415,13 +417,20 @@ export async function prepareControlledProfile(
   const workspacePath = join(profileDir, "pnpm-workspace.yaml");
   const statePath = join(options.dshHome, "action-state", "tool-counts.json");
   const auditPath = join(options.dshHome, "action-state", "tool-receipts.jsonl");
-  const bundles = [
+  const legacyBundles = [
     ...PROFILE_BUNDLES,
     ...options.plan.bundles.map((bundle) => bundle.definition.package),
   ];
   const baseDependencies = isRecord(options.manifestBase.dependencies)
     ? options.manifestBase.dependencies
     : {};
+  const rendered = renderControlledProfilePatch(options);
+  const bundles = await stageProjectProfile(
+    options.projectProfile,
+    profileDir,
+    rendered.patch,
+    legacyBundles,
+  );
   const manifest = {
     ...options.manifestBase,
     name: "dsh-profile-github-action",
@@ -429,13 +438,11 @@ export async function prepareControlledProfile(
     dependencies: { ...baseDependencies, ...options.plan.packageDependencies },
     dsh: { profile: { bundles } },
   };
-  const rendered = renderControlledProfilePatch(options);
   await mkdir(profileDir, { recursive: true });
   await writeFile(manifestPath, `${JSON.stringify(manifest, undefined, 2)}\n`, {
     encoding: "utf8",
     mode: 0o600,
   });
-  await writeFile(patchPath, rendered.patch, { encoding: "utf8", mode: 0o600 });
   await writeFile(
     rootPath,
     "# Controller-owned empty Profile root; Bundle/Profile patches compose the tree.\n[]\n",

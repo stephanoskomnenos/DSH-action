@@ -31,13 +31,14 @@ export interface DshProcessResult {
 
 export interface DshProcessLimits {
   readonly timeoutMs: number;
+  readonly onStderr?: (chunk: Buffer) => void;
+  readonly onStdout?: (chunk: Buffer) => void;
+  readonly phase?: string;
   readonly maxStdoutBytes: number;
   readonly maxStderrBytes: number;
   readonly maxCombinedBytes: number;
   readonly signal?: AbortSignal;
   readonly killGraceMs?: number;
-  /** Best-effort telemetry; receives a copy, never the authoritative buffer. */
-  readonly onStdout?: (chunk: Buffer) => void;
 }
 
 function positiveInteger(value: number, name: string): void {
@@ -174,19 +175,21 @@ export async function executeBoundedDshProcess(
         return;
       }
       (stream === "stdout" ? stdoutChunks : stderrChunks).push(chunk);
-      if (stream === "stdout" && limits.onStdout !== undefined) {
-        try {
-          limits.onStdout(Buffer.from(chunk));
-        } catch {
-          // Observability must not weaken caps, deadlines or result parsing.
-        }
+      try {
+        if (stream === "stdout") limits.onStdout?.(Buffer.from(chunk));
+        else limits.onStderr?.(Buffer.from(chunk));
+      } catch {
+        /* Diagnostic observers cannot change process results. */
       }
     };
 
     child.stdout.on("data", (value: unknown) => capture("stdout", value));
     child.stderr.on("data", (value: unknown) => capture("stderr", value));
 
-    const timeout = setTimeout(() => stop(new DshTimeoutError(limits.timeoutMs)), limits.timeoutMs);
+    const timeout = setTimeout(
+      () => stop(new DshTimeoutError(limits.timeoutMs, limits.phase ?? "worker")),
+      limits.timeoutMs,
+    );
     timeout.unref();
     const abort = (): void => stop(new DshAbortedError());
     limits.signal?.addEventListener("abort", abort, { once: true });

@@ -4,7 +4,7 @@
 
 This guide is for repository maintainers qualifying and publishing an Action release. A successful run proves only the exact commit SHA it tested. After any candidate change, repeat every required check against the new latest SHA.
 
-For v0.12.2, retain the exact production DSH `0.2.1-rc.2` family and resolve its
+For v0.13.0, retain the exact production DSH `0.2.1-rc.2` family and resolve its
 MCP bridge to official `@modelcontextprotocol/client` `2.3.0` through the exact
 parent-scoped security override, with peer and lock validation intact. Optional
 model settings reuse the existing Session protocol, history selection,
@@ -33,6 +33,9 @@ prepare the independently versioned installer with the actual formal Action SHA.
 The advisory stable/RC/alpha upstream canaries never replace these production gates.
 Do not rerun task-bearing failures without first reconciling their diagnostics
 and confirmed effects; preserve a bounded continuation record for external blocks.
+
+The v0.13.0 release publishes only the Action. Leave the installer source, version,
+and published Action binding unchanged; skip installer preparation and publication.
 
 The independent installer `0.7.4` targets formal Action `v0.12.2` through
 `DSH_ACTION_RELEASE_SHA`. Its source tag is
@@ -207,9 +210,14 @@ For pre-merge qualification, set the candidate variable and dispatch the trusted
 gh variable set DSH_E2E_CANDIDATE_SHA --body "$candidate_sha"
 gh workflow run e2e.yml --ref main \
   -f candidate_mode=pull-request \
+  -f profile_defaults=true \
   -f candidate_sha="$candidate_sha" \
   -f pull_request="$pr_number"
 ```
+
+For v0.13.0, `profile_defaults=true` selects assertions for the default Worker
+egress and web tools. Use `false` only when qualifying an older Action with
+legacy defaults. This harness selector does not change the candidate runtime.
 
 Harness files and fixtures are checked out at the trusted default-branch SHA. Candidate Action code is checked out separately at the bound candidate SHA. Every checkout sets `persist-credentials: false`, and the workflow verifies that no checkout Git credential remains.
 
@@ -248,8 +256,9 @@ counts and proof equality plus a sanitized server audit, including on failure.
 
 The live Web Search smoke requests a source title and URL from the actual
 search response, separately from repository context. It still requires exactly
-one completed successful `native.web-search` receipt and mediated network
-authority. A final JSON answer without that receipt fails even if its text
+one completed successful `native.web-search` receipt and the selected Worker
+network setting. Search authentication stays behind the credential proxy;
+`worker-network` independently selects Worker public egress. A final JSON answer without that receipt fails even if its text
 looks correct. Always-running diagnostics preserve safe outcome/count fields
 when the Action or its assertion fails; they do not print model text or URLs.
 
@@ -363,6 +372,7 @@ After candidate CI and pre-merge Core E2E pass:
    gh variable set DSH_E2E_CANDIDATE_SHA --body "$release_sha"
    gh workflow run e2e.yml --ref main \
      -f candidate_mode=main \
+     -f profile_defaults=true \
      -f candidate_sha="$release_sha"
    ```
 

@@ -127,7 +127,6 @@ describe("controlled official DSH Profile", () => {
       "ptc-runtime",
       "workflow-ptc",
       "mcp-resources",
-      "web-fetch-http",
       "session-log-deepseek",
       "plugin-package-inventory-deepseek",
       "session-telemetry-otel",

@@ -36,7 +36,6 @@ export interface DshRunAdmission {
   readonly webSearchEnabled: boolean;
   readonly workspaceWrite: boolean;
   readonly disposableExecution: boolean;
-  readonly network: boolean;
 }
 
 export interface DshRunContext extends DshRunAdmission {
@@ -92,6 +91,7 @@ export function admitDshRun(
     );
   }
   if (
+    request.projectProfile !== undefined ||
     dependencies.runtime?.session !== undefined ||
     request.trust === "trusted-write" ||
     disposableExecution(request) ||
@@ -109,16 +109,9 @@ export function admitDshRun(
       { cause: error },
     );
   }
+  if (request.workerNetwork === false && request.isolation !== "docker")
+    throw new DshConfigurationError("worker-network=false requires Docker network enforcement");
   const nativeTools = effectiveNativeTools(request);
-  if (
-    composition.toolPolicyOwner === "controller" &&
-    extensions.network &&
-    nativeTools.includes("native.bash")
-  ) {
-    throw new DshConfigurationError(
-      "native.bash cannot share a worker with a bridge-networked extension; remove native.bash or the networked extension",
-    );
-  }
   return {
     request,
     composition,
@@ -126,11 +119,17 @@ export function admitDshRun(
     nativeTools,
     environment,
     platform: dependencies.platform ?? process.platform,
-    secrets: [...new Set([...controllerSecrets, ...extensionSecrets(extensions)])],
-    webSearchEnabled: composition.requiresWebSearchProxy(nativeTools),
+    secrets: [
+      ...new Set([
+        ...controllerSecrets,
+        ...extensionSecrets(extensions),
+        ...Object.values(request.workerEnv ?? {}),
+      ]),
+    ],
+    webSearchEnabled:
+      request.workerNetwork !== false && composition.requiresWebSearchProxy(nativeTools),
     workspaceWrite: workerWorkspaceWrite(request, composition),
     disposableExecution: disposableExecution(request),
-    network: extensions.network || disposableExecution(request),
   };
 }
 
@@ -191,6 +190,7 @@ export async function prepareDshContext(
   const prompt = buildDshPrompt({
     operation: request.operation,
     prompt: request.prompt,
+    workerNetwork: request.workerNetwork !== false,
     trust: request.trust,
     ...(request.trustedInstructions === undefined && sessionInstructions === undefined
       ? {}

@@ -142,7 +142,6 @@ describe("explicit disposable execution", () => {
     );
     expect(admission).toMatchObject({
       workspaceWrite: true,
-      network: true,
       disposableExecution: true,
     });
     expect(admission.nativeTools).toContain("native.bash");

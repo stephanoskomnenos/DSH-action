@@ -172,11 +172,11 @@ Trust profiles above answer whether the event and actor may access the
 repository. v0.5 permission profiles are a separate, monotonic Agent-tool
 dimension:
 
-| Permission profile | Preset request                                                        | Intended use                            |
-| ------------------ | --------------------------------------------------------------------- | --------------------------------------- |
-| `strict`           | `workspace.read`, `workspace.search`, `workspace.edit`                | v0.4-compatible default and review      |
-| `standard`         | strict plus `native.bash`, `native.web-search`, and `native.subagent` | trusted maintainer coding               |
-| `custom`           | no preset; every canonical tool ID is explicit                        | precise policy, MCP, Bundle, and Plugin |
+| Permission profile | Preset request                                                                                  | Intended use                                |
+| ------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `strict`           | `workspace.read`, `workspace.search`, `workspace.edit`, `native.web-search`, `native.web-fetch` | Default review; edit requires trusted-write |
+| `standard`         | strict plus `native.bash` and `native.subagent`                                                 | trusted maintainer coding                   |
+| `custom`           | no preset; every canonical tool ID is explicit                                                  | precise policy, MCP, Bundle, and Plugin     |
 
 Preset expansion does not bypass trust. Exact `disallowed-tools` entries always
 win over the preset and `allowed-tools`; the remaining requests are intersected
@@ -204,7 +204,7 @@ object; native DSH inventory remains DSH-owned runtime observation.
 Composition is a separate dimension. `dsh-mode: controlled` is the compatible
 default and retains the Action-generated Profile and positive ToolRuntime
 policy. Experimental `dsh-mode: native` uses the locked official DSH
-`0.2.0-rc.2` headless composition and leaves DSH in ownership of its internal
+`0.2.1-rc.2` headless composition and leaves DSH in ownership of its internal
 capability graph. `permission-profile` is neither reused nor reinterpreted as a
 composition selector, and a controlled canonical allowlist is not presented as
 complete authority over the native inventory.
@@ -290,8 +290,8 @@ are rejected at configuration parsing as an additional guard; the primary
 boundary is that all argv bytes are trusted workflow configuration, not model
 output. The separate `native.bash` capability is opt-in through
 `standard`/`custom`, requires the trusted-write Docker policy, runs bounded
-foreground commands without escalation approval, and cannot share a worker
-with a bridge-networked extension.
+foreground commands without escalation approval. Bash authorization is separate
+from `worker-network`; an authorized Bash tool can share an online Worker.
 
 Each command tool runs in a named, hardened, credential-free container with a
 read-only container root, dropped capabilities, `no-new-privileges`, resource
@@ -343,32 +343,29 @@ before a later failure, the Controller records `partial-success` and an
 
 This section applies to `dsh-mode: controlled`.
 
-v0.4 introduced the official DSH extension mechanisms. v0.9.1 migrates them
-against the exact `@deepseek-ai/dsh@0.2.0-rc.2` package family, generates a
-controlled Profile, and
-loads the approved Bundle and Cordis plugin rows from that Profile. It does not
-read extension authorization from the repository or model response and does not
-run model-generated `npm`, Git, or plugin-install commands. The generated Cordis
-patch serializes workflow values as JSON data so a configured string cannot add
-a patch row or become a YAML `!!js` expression; an approved Bundle's own patch
-remains trusted package code.
+The Action composes trusted project Profiles with its internal runtime overrides
+through the official `@deepseek-ai/dsh-app-boot@0.2.1-rc.2` Profile API. Without a
+project Profile, legacy workflow inputs are converted into the same native
+loading path. Bundles and Cordis plugins are executable trusted configuration;
+PR-head content and model output cannot supply their startup configuration.
+Controlled tool requests from the trusted Profile remain limited by the
+Controller's capabilities, explicit denies and current authorization.
 
-The [fixed-candidate migration audit](docs/dsh-0.2.0-rc.2-migration.md) covers
-app-boot, Profile/Bundle/Plugin, MCP, ToolRuntime, Bash, Web Search, Subagent,
-Workflow/PTC, Session lifecycle, receipts, Docker/path/timeout handling, and
-the packaged `dist` entrypoint. It records required upstream differences and
-the dependency audit findings without approving later DSH releases.
-The [2026-10-14 dependency review](docs/dependency-security-2026-10-14.md)
-records the current compatible patches, remaining exact upstream constraints,
-and the distinction between installed advisories and default-path reachability.
+The Action never runs model-generated package installation or Git commands.
+Legacy workflow values are serialized as JSON data, so a configured string cannot
+inject a Cordis row or YAML `!!js` expression. Trusted native patch expressions
+retain official DSH semantics. The general CLI's local `$DSH_HOME` and `.env`
+discovery, watch and hot reload are not used.
+
+The [fixed-candidate migration audit](docs/dsh-0.2.1-rc.2-migration.md) records
+the official runtime and composition integration. The
+[v0.13.0 dependency updates](CHANGELOG.md#0130---2026-10-31) retain that DSH family
+with explicit major-scoped or exact-parent compatibility overrides. Production
+audit results retain seven moderate entries in the Artifact SDK archive chain,
+with no high or critical entries. The [2026-10-14 dependency review](docs/dependency-security-2026-10-14.md)
+is historical evidence, not the current override or vulnerability inventory.
 The separately versioned installer writes workflow files and does not run
 inside the Agent or Controller.
-
-In controlled mode, the Action starts this generated Profile through the official
-`@deepseek-ai/dsh-app-boot@0.2.0-rc.2` public API. It does not use the general
-CLI path that discovers workspace or `$DSH_HOME` `.env` files, nor does it
-enable dynamic user patch discovery, watch or hot reload. The only Profile and
-Cordis patch inputs come from the Controller-validated run configuration.
 
 The effective runtime tool set is a positive intersection of the selected
 permission preset, exact allow/deny lists, strict configuration manifests, and
@@ -386,21 +383,24 @@ ToolRouter. The same capability compiler supplies both enforcement planes:
   final validation gate still apply to the resulting file changes.
 - `network` must be declared by the server/package and every exposed tool and
   must be allowed by the current policy. A Streamable HTTP MCP server therefore
-  always requires network. Network-enabled worker execution is not a
-  destination allowlist.
-- `native.web-search` is a separate Controller-mediated path to the configured
-  DeepSeek Search API. `native.web-fetch` separately admits the Fetch API.
-  Neither exposes the real key or implies general Docker bridge egress. `native.bash` remains
-  inside the credential-free trusted-write Docker worker and cannot share a
-  worker with a bridge-networked extension.
+  always declares a network requirement. These legacy declarations govern tool
+  admission, not the Worker network. `worker-network` alone selects public egress.
+- Official DSH `native.web-search` uses the restricted Controller credential
+  proxy; the real DeepSeek key stays outside the Worker. Official HTTP
+  `native.web-fetch` fetches public pages directly from the Worker. Both are
+  requested by the default Controlled strict preset, subject to trust and tool
+  policy. Their availability does not select the Worker network. Authorized
+  `native.bash` remains in the credential-free trusted-write Docker Worker.
 - A non-bridge worker still reaches the Controller proxy through the inspected
   Docker host gateway. Permission output therefore reports `host-gateway`, not
   physical zero networking; that path is not a port allowlist, so runner firewall
   policy remains responsible for other host services.
 - Network namespaces and workspace mounts belong to the whole DSH process. All
-  co-hosted extension owners must declare the same network and workspace-write
-  mode; every owner in trusted-write must opt into workspace-write. Mixed modes
-  are rejected rather than presented as per-tool process isolation.
+  Legacy Controlled tools must agree with their owner's network declaration,
+  and co-hosted owners must agree on declared network/workspace-write modes;
+  every owner in
+  trusted-write must opt into workspace-write. These declarations do not create
+  per-tool process isolation or override `worker-network`.
 - Every extension tool must declare `read`: an extension process shares the
   Agent's repository view, so a narrower per-tool read claim would be false.
 - Each DSH-native, MCP or plugin tool has a timeout, serialized output limit,
@@ -532,8 +532,8 @@ write boundary. Native `toolPolicy` deliberately omits Controller
 
 Native currently fails closed unless Docker isolation is selected. A native
 worker receives the same disposable `.git`-less repository view selected by
-Action trust policy, the same internal-network or bridge construction selected
-by outer policy, only an ephemeral proxy token for model traffic, and no real
+Action trust policy, the internal network or outbound bridge selected only by
+`worker-network`, only an ephemeral proxy token for model traffic, and no real
 GitHub credential. The Controller still owns event and actor authorization,
 immutable repository identity, typed GitHub operations, validation and
 revalidation, mutation queuing and flush, process deadlines, cancellation,
@@ -541,15 +541,16 @@ cleanup, output bounds, and redaction.
 
 Native admission still fails closed unless configuration comes from an eligible
 trusted workflow and the outer extension, network, and write capabilities are
-available. An owner's `network: true` enables Docker bridge egress for the
-entire native worker, including every other DSH capability in that process; it
-is not a destination or per-extension allowlist. A read/write repository mount
+available. The Action's independent `worker-network` switch defaults to true
+for the entire Worker, including fork contexts. Plugin network flags do not
+select its network. This is not a destination or per-extension allowlist. A read/write repository mount
 is likewise a whole-worker boundary selected by Action trust/write policy, not
 a per-tool sandbox. An owner that requests `workspaceWrite` cannot expand a
 trusted-read run into trusted-write authority.
 
 Configured Bundle and Plugin packages require an exact npm semver or immutable
-GitHub commit and the independent `allow-plugin-install=true` gate. Acquisition
+GitHub commit. Legacy workflow configuration uses `allow-plugin-install=true`;
+a trusted project Profile is the explicit package declaration for the native path. Acquisition
 continues to disable lifecycle scripts. Before startup, the Controller verifies
 the installed identity and pin, lock provenance, and preservation of the full
 pre-existing top-level runtime package inventory. This does not make package
@@ -708,20 +709,21 @@ isolation report before candidate identity is revalidated.
 
 ## Known boundary
 
-Network permission is enforced at the DSH worker boundary, not as a
-per-destination firewall. `network=false` is not a claim that the worker has no
-network path. When no approved extension requests network, the worker uses an
-internal controller-owned Docker network, which blocks ordinary external
-egress. The Controller inspects that network's IPv4 gateway and maps
+`worker-network` is the Worker public-egress switch. It defaults to `true`
+independently of composition, trust tier and extension declarations, including
+fork Workers. Docker Workers then use a dedicated outbound bridge; this is not
+a per-destination firewall. Set `worker-network: "false"` to use an internal
+Controller-owned Docker network that blocks ordinary public egress and disables
+web tools and their proxy routes. The setting does not mean physical zero
+networking. The Controller inspects that network's IPv4 gateway and maps
 `host.docker.internal` to the inspected address for the local LLM credential
 proxy. That host-gateway route is required for model traffic and is not a
 port-level allowlist; runner-level firewall policy remains the boundary for
 other host services. Failure to obtain a valid inspected gateway fails closed.
-Package acquisition separately uses bridge networking even if the package's
-later runtime declaration is `network=false`. When an approved MCP server,
-Bundle or plugin requests network, worker networking is enabled for the
-co-hosted DSH process and every trusted package in that process can technically
-use that egress. The real API key and GitHub token remain outside the worker,
+Controller GitHub/model requests and package acquisition have independent
+network paths. Legacy plugin `network: false` does not disable Worker egress,
+and `network: true` cannot enable it when `worker-network` is false. An online
+Worker shares its egress with all code in that process. The real API key and GitHub token remain outside the worker,
 but destination-level allowlists are not provided. Avoid combining extensions
 with different confidentiality assumptions, use a dedicated self-hosted
 runner/network policy when source confidentiality requires hard egress control,
@@ -733,6 +735,8 @@ eligible trusted-read operation, no operating-system process boundary exists;
 the configured `dsh-executable` then runs as trusted host code. Use that mode
 only on a dedicated trusted runner. It is a controlled compatibility path;
 native, untrusted, and trusted-write execution always require Docker.
+`isolation: none` cannot enforce `worker-network: "false"` and rejects that
+combination.
 
 The credential-free validation container currently uses Docker bridge
 networking for validation commands, including dependency installation. That is
@@ -746,7 +750,7 @@ Use dedicated runners, network segmentation, and runner-level egress controls
 for that threat model.
 
 GitHub attachment images are not an enabled input path in v0.9.1. The exact
-audited `@deepseek-ai/dsh-headless@0.2.0-rc.2` entrypoint accepts one text task
+audited `@deepseek-ai/dsh-headless@0.2.1-rc.2` entrypoint accepts one text task
 and constructs one text content block; it has no formal multimodal contract.
 Markdown images are rendered inert as `[image removed]`. The Controller does
 not download attachments, forward their URLs, mount their bytes, or attach
@@ -782,7 +786,7 @@ Controlled mode retains the binding of its generated Profile and positive
 native-tool policy to the exact DSH version whose complete tool surface was
 audited. Native mode binds its official headless composition and observed
 runtime inventory to that same pin. The Action accepts only the exact
-`@deepseek-ai/dsh@0.2.0-rc.2` package family; another tag, range, or exact
+`@deepseek-ai/dsh@0.2.1-rc.2` package family; another tag, range, or exact
 version is rejected until matching controlled and native contracts are reviewed
 and shipped. The Action's DSH
 dependency graph is installed from the committed lockfile in an ephemeral
